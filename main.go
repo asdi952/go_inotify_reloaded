@@ -1,93 +1,55 @@
 package main
 
 import (
+	"autoreload/reqcap"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
 
-const mpath string = "F:\\myProjects\\goserver\\backend\\main.go"
+const mpath string = "F:\\myProjects\\goserver\\backend\\"
+const mfile string = "main.go"
 
-type reqCap struct {
-	timer    *time.Timer
-	callback func(o *reqCap)
-	duration time.Duration
-	state    bool
-	cmd      *exec.Cmd
-	name     string
+func kill_pgm(pid string) error {
+	kill_pgm := exec.Command("TASKKILL", "/T", "/F", "/PID", pid)
+	kill_pgm.Stderr = os.Stderr
+	kill_pgm.Stdout = os.Stdout
+	return kill_pgm.Run()
 }
 
-func New_reqCap(call func(o *reqCap), dur time.Duration) *reqCap {
-	aux := reqCap{
-		timer:    time.NewTimer(time.Second * 20),
-		callback: call,
-		duration: dur,
-		state:    true,
+var count int = 0
+
+func restartProgram(o *reqcap.ReqCap) {
+
+	fmt.Println(o.Name)
+
+	if o.Cmd != nil {
+		kill_pgm(strconv.Itoa(o.Pid))
 	}
-	aux.timer.Stop()
+	//o.Cmd = exec.Command("F:\\golang\\bin\\go.exe", "run", mpath)
+	o.Cmd = exec.Command("F:\\myProjects\\goserver\\autoreaload\\start.bat", mpath, mfile)
 
-	go func(r *reqCap) {
-		for r.state {
-			<-r.timer.C
-			r.callback(r)
-		}
-	}(&aux)
-
-	return &aux
-}
-
-func (o *reqCap) Close_reqCap() {
-	o.timer.Stop()
-	o.state = false
-}
-
-func (o *reqCap) Capture(name string) bool {
-	o.name = name
-	return o.timer.Reset(o.duration)
-}
-
-func kill(pid string) error {
-	kill := exec.Command("TASKKILL", "/T", "/F", "/PID", pid)
-	kill.Stderr = os.Stderr
-	kill.Stdout = os.Stdout
-	return kill.Run()
-}
-
-func restartProgram(o *reqCap) {
-
-	fmt.Println(o.name)
-
-	if o.cmd != nil {
-		//fmt.Println("deleting ", strconv.Itoa(o.cmd.Process.Pid))
-		kill(strconv.Itoa(o.cmd.Process.Pid))
-	}
-
-	o.cmd = exec.Command("F:\\golang\\bin\\go.exe", "run", mpath)
-
-	o.cmd.Stdout = os.Stdout
-	o.cmd.Stderr = os.Stderr
-
-	if err := o.cmd.Start(); err != nil {
+	if err := o.Cmd.Start(); err != nil {
 		panic(err)
 	}
-	fmt.Println("--------------------------------------------------")
-	fmt.Println("----------------------CHILD PROGRAM---------------")
-	/* 	str := fmt.Sprintf("(ParentProcessId=%d)", o.cmd.Process.Pid)
 
-	   	aux, _ := exec.Command("wmic", "process", "where", str, "get", "Caption,ProcessId").Output()
-	   	aux1 := string(aux)
-	   	fmt.Println(aux1)
+	fmt.Println(o.Cmd.Process.Pid)
+	u := fmt.Sprintf("(ParentProcessId=%d)", o.Cmd.Process.Pid)
+	pidStr, _ := exec.Command("wmic", "process", "where", u, "get", "Caption,ProcessId").Output()
+	reg := regexp.MustCompile("\\d+")
+	pid, _ := strconv.Atoi(string(reg.Find(pidStr)))
+	o.Pid = pid
 
-	   	re := regexp.MustCompile("\\d+")
-	   	m := string(re.Find(aux))
-
-	   	o.pid = m
-	*/
+	fmt.Println(fmt.Sprintf("%d  -------------------------------", count))
+	count++
 
 }
 
@@ -99,8 +61,8 @@ func main() {
 	}
 	defer watcher.Close()
 
-	capt := New_reqCap(restartProgram, 2000*time.Millisecond)
-	capt.name = "Inner Porg Initializing"
+	capt := reqcap.New_reqCap(restartProgram, 2000*time.Millisecond)
+	capt.Name = "Inner Porg Initializing"
 	restartProgram(capt)
 
 	go func() {
@@ -110,6 +72,22 @@ func main() {
 			case event, ok := <-watcher.Events:
 				if !ok {
 					return
+				}
+				if event.Has(fsnotify.Create) {
+					fmt.Println("created ", event.Name)
+					fileInfo, _ := os.Stat(event.Name)
+					if fileInfo.IsDir() {
+						fmt.Println("add file")
+						watcher.Add(event.Name)
+					}
+				}
+				if event.Has(fsnotify.Remove) {
+					fmt.Println("Delete ", event.Name)
+					ff, _ := os.Stat(event.Name)
+					if ff.IsDir() {
+						fmt.Println("remove dir")
+						//watcher.Lis(event.Name)
+					}
 				}
 				if event.Has(fsnotify.Write) {
 
@@ -127,10 +105,27 @@ func main() {
 		}
 	}()
 
-	err = watcher.Add("F:\\myProjects\\goserver\\backend")
-	if err != nil {
-		panic("watcher add error")
-	}
-
+	watchAllFolders(mpath, func(p string) {
+		err := watcher.Add(p)
+		if err != nil {
+			panic(err)
+		}
+	})
 	<-make(chan int)
+}
+
+func watchAllFolders(p string, evt func(string)) {
+	files, err := ioutil.ReadDir(p)
+	if err != nil {
+		log.Fatal(err)
+	}
+	evt(p)
+	for _, f := range files {
+		if f.IsDir() {
+			np := p + "\\" + f.Name()
+
+			watchAllFolders(np, evt)
+		}
+
+	}
 }
