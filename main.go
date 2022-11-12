@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -20,8 +19,8 @@ const mfile string = "main.go"
 
 func kill_pgm(pid string) error {
 	kill_pgm := exec.Command("TASKKILL", "/T", "/F", "/PID", pid)
-	kill_pgm.Stderr = os.Stderr
-	kill_pgm.Stdout = os.Stdout
+	/* kill_pgm.Stderr = os.Stderr
+	kill_pgm.Stdout = os.Stdout */
 	return kill_pgm.Run()
 }
 
@@ -32,10 +31,13 @@ func restartProgram(o *reqcap.ReqCap) {
 	fmt.Println(o.Name)
 
 	if o.Cmd != nil {
-		kill_pgm(strconv.Itoa(o.Pid))
+		kill_pgm(o.Pid)
 	}
 	//o.Cmd = exec.Command("F:\\golang\\bin\\go.exe", "run", mpath)
+	//o.Cmd = exec.Command("F:\\myProjects\\goserver\\autoreaload\\start.bat", mpath, mfile)
 	o.Cmd = exec.Command("F:\\myProjects\\goserver\\autoreaload\\start.bat", mpath, mfile)
+	o.Cmd.Stderr = os.Stderr
+	o.Cmd.Stdout = os.Stdout
 
 	if err := o.Cmd.Start(); err != nil {
 		panic(err)
@@ -45,7 +47,7 @@ func restartProgram(o *reqcap.ReqCap) {
 	u := fmt.Sprintf("(ParentProcessId=%d)", o.Cmd.Process.Pid)
 	pidStr, _ := exec.Command("wmic", "process", "where", u, "get", "Caption,ProcessId").Output()
 	reg := regexp.MustCompile("\\d+")
-	pid, _ := strconv.Atoi(string(reg.Find(pidStr)))
+	pid := string(reg.Find(pidStr))
 	o.Pid = pid
 
 	fmt.Println(fmt.Sprintf("%d  -------------------------------", count))
@@ -63,6 +65,7 @@ func main() {
 
 	capt := reqcap.New_reqCap(restartProgram, 2000*time.Millisecond)
 	capt.Name = "Inner Porg Initializing"
+	defer kill_pgm(capt.Pid)
 	restartProgram(capt)
 
 	go func() {

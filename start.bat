@@ -1,3 +1,5 @@
+@echo off
 IF [%1] == [] exit /B
 IF [%2] == [] exit /B
-start /D %1  go run %2
+
+cmd /k "cd %1 && go run %2"

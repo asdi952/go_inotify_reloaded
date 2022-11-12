@@ -12,7 +12,7 @@ type ReqCap struct {
 	state    bool
 	Cmd      *exec.Cmd
 	Name     string
-	Pid      int
+	Pid      string
 }
 
 func New_reqCap(call func(o *ReqCap), dur time.Duration) *ReqCap {
